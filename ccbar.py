@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """ccbar — configurable status line for Claude Code."""
 
-VERSION = "0.3.2"
+VERSION = "0.3.3"
 
 import json
 import os
