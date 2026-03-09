@@ -208,10 +208,10 @@ def read_cache(path, ttl=30):
     return None
 
 
-def write_cache(path, usage=None, plan=None):
+def write_cache(path, usage=None, plan=None, error=None):
     try:
         with open(path, "w") as f:
-            json.dump({"timestamp": time.time(), "usage": usage, "plan": plan}, f)
+            json.dump({"timestamp": time.time(), "usage": usage, "plan": plan, "error": error}, f)
     except OSError:
         pass
 
@@ -579,8 +579,11 @@ def main():
     cache_path = get_cache_path()
     cached = read_cache(cache_path, cfg["cache_ttl"])
 
-    if cached and cached.get("usage") is not None:
-        line = build_status_line(cached["usage"], cached.get("plan", ""), ctx, cfg)
+    if cached is not None:
+        if cached.get("usage") is not None:
+            line = build_status_line(cached["usage"], cached.get("plan", ""), ctx, cfg)
+        else:
+            line = cached.get("error", "Usage unavailable")
         sys.stdout.buffer.write((line + "\n").encode("utf-8"))
         return
 
@@ -589,17 +592,20 @@ def main():
         sys.stdout.buffer.write(b"No credentials found\n")
         return
 
+    error = None
     try:
         usage = fetch_usage(token)
         line = build_status_line(usage, plan, ctx, cfg)
     except urllib.error.HTTPError as e:
         usage = None
-        line = f"API error: {e.code}"
+        error = f"API error: {e.code}"
+        line = error
     except Exception:
         usage = None
-        line = "Usage unavailable"
+        error = "Usage unavailable"
+        line = error
 
-    write_cache(cache_path, usage, plan)
+    write_cache(cache_path, usage, plan, error=error)
     sys.stdout.buffer.write((line + "\n").encode("utf-8"))
 
 
