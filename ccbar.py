@@ -103,6 +103,7 @@ DEFAULT_CONFIG = {
     },
     "layout": "standard",
     "cache_ttl": 30,
+    "error_cache_ttl": 120,
     "update_check": True,
     "update_interval": UPDATE_CHECK_INTERVAL,
     "sections": ["git", "cwd", "model", "session", "weekly", "context", "credits", "plan"],
@@ -134,6 +135,7 @@ def load_config():
     cfg["colors"] = {**DEFAULT_CONFIG["colors"], **theme_colors, **user.get("colors", {})}
     cfg["layout"] = user.get("layout", DEFAULT_CONFIG["layout"])
     cfg["cache_ttl"] = user.get("cache_ttl", DEFAULT_CONFIG["cache_ttl"])
+    cfg["error_cache_ttl"] = user.get("error_cache_ttl", DEFAULT_CONFIG["error_cache_ttl"])
     cfg["update_check"] = user.get("update_check", DEFAULT_CONFIG["update_check"])
     cfg["update_interval"] = user.get("update_interval", DEFAULT_CONFIG["update_interval"])
     cfg["sections"] = user.get("sections", DEFAULT_CONFIG["sections"])
@@ -197,15 +199,12 @@ def get_cache_path():
     return cache_dir / "cache.json"
 
 
-def read_cache(path, ttl=30):
+def read_cache(path):
     try:
         with open(path) as f:
-            cached = json.load(f)
-        if time.time() - cached.get("timestamp", 0) < ttl:
-            return cached
+            return json.load(f)
     except Exception:
-        pass
-    return None
+        return None
 
 
 def write_cache(path, usage=None, plan=None, error=None):
@@ -577,15 +576,18 @@ def main():
         pass
 
     cache_path = get_cache_path()
-    cached = read_cache(cache_path, cfg["cache_ttl"])
+    cached = read_cache(cache_path)
 
     if cached is not None:
-        if cached.get("usage") is not None:
-            line = build_status_line(cached["usage"], cached.get("plan", ""), ctx, cfg)
-        else:
-            line = cached.get("error", "Usage unavailable")
-        sys.stdout.buffer.write((line + "\n").encode("utf-8"))
-        return
+        is_error = cached.get("usage") is None
+        ttl = cfg["error_cache_ttl"] if is_error else cfg["cache_ttl"]
+        if time.time() - cached.get("timestamp", 0) < ttl:
+            if not is_error:
+                line = build_status_line(cached["usage"], cached.get("plan", ""), ctx, cfg)
+            else:
+                line = cached.get("error", "Usage unavailable")
+            sys.stdout.buffer.write((line + "\n").encode("utf-8"))
+            return
 
     token, plan = get_credentials()
     if not token:
