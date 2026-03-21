@@ -32,6 +32,8 @@ git clone https://github.com/taras-mrtn/ccbar.git $HOME\.ccbar
 python $HOME\.ccbar\ccbar.py --install
 ```
 
+The `--install` command launches an interactive TUI wizard (arrow-key navigation, live preview) to configure theme, bar style, width, layout, and sections. On non-TTY environments it falls back to text prompts.
+
 Restart Claude Code. That's it.
 
 ## Requirements
