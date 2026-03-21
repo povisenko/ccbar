@@ -107,6 +107,7 @@ DEFAULT_CONFIG = {
     "update_check": True,
     "update_interval": UPDATE_CHECK_INTERVAL,
     "sections": ["git", "cwd", "model", "session", "weekly", "context", "credits", "plan"],
+    "git_status": False,
 }
 
 
@@ -139,6 +140,7 @@ def load_config():
     cfg["update_check"] = user.get("update_check", DEFAULT_CONFIG["update_check"])
     cfg["update_interval"] = user.get("update_interval", DEFAULT_CONFIG["update_interval"])
     cfg["sections"] = user.get("sections", DEFAULT_CONFIG["sections"])
+    cfg["git_status"] = user.get("git_status", DEFAULT_CONFIG["git_status"])
     return cfg
 
 
@@ -398,7 +400,7 @@ def render_git(usage, plan, ctx, cfg):
     if not branch:
         return None
     part = f"\u2387 {branch}"
-    if git_status:
+    if cfg.get("git_status") and git_status:
         part += f" {git_status}"
     return part
 
@@ -407,12 +409,16 @@ def render_cwd(usage, plan, ctx, cfg):
     cwd = ctx.get("cwd") or (ctx.get("workspace") or {}).get("current_dir")
     if not cwd:
         return None
-    return Path(cwd).name
+    return f"📁 {Path(cwd).name}"
 
 
 def render_model(usage, plan, ctx, cfg):
     model = (ctx.get("model") or {}).get("display_name") or (ctx.get("model") or {}).get("id")
-    return model or None
+    if not model:
+        return None
+    if model.startswith("Claude "):
+        model = model[7:]
+    return model
 
 
 def render_session(usage, plan, ctx, cfg):
@@ -473,9 +479,18 @@ RENDERERS = {
 }
 
 
-def build_status_line(usage, plan, ctx, cfg):
+_API_SECTIONS = {"session", "weekly", "credits"}
+
+
+def build_status_line(usage, plan, ctx, cfg, error=None):
     parts = []
+    error_shown = False
     for section in cfg["sections"]:
+        if error and section in _API_SECTIONS:
+            if not error_shown:
+                parts.append(error)
+                error_shown = True
+            continue
         renderer = RENDERERS.get(section)
         if renderer:
             result = renderer(usage, plan, ctx, cfg)
@@ -891,11 +906,18 @@ def _interactive_install_fallback():
         all_sections = list(RENDERERS.keys())
         sections = prompt_sections(all_sections, DEFAULT_CONFIG["sections"])
 
+        git_status_options = [
+            (False, "branch only — ⎇ main"),
+            (True, "branch + status — ⎇ main +2 *1 ?3"),
+        ]
+        git_status = prompt_choice("Git status:", git_status_options, default=False)
+
         user_config = {
             "theme": theme,
             "bar": {"style": bar_style, "width": bar_width},
             "layout": layout,
             "sections": sections,
+            "git_status": git_status,
         }
 
         preview_cfg = dict(DEFAULT_CONFIG)
@@ -984,6 +1006,7 @@ def _interactive_install_inner():
         "bar_width": existing.get("bar", {}).get("width", 8),
         "layout": existing.get("layout", "standard"),
         "sections": existing.get("sections", list(DEFAULT_CONFIG["sections"])),
+        "git_status": existing.get("git_status", False),
     }
 
     preview_usage = {
@@ -1007,6 +1030,7 @@ def _interactive_install_inner():
         cfg["colors"] = {**DEFAULT_CONFIG["colors"], **theme_colors}
         cfg["layout"] = s["layout"]
         cfg["sections"] = s["sections"]
+        cfg["git_status"] = s.get("git_status", False)
         cfg["update_check"] = False
         return cfg
 
@@ -1032,6 +1056,11 @@ def _interactive_install_inner():
         ("minimal", "minimal — no labels, bars only"),
     ]
     all_sections = list(RENDERERS.keys())
+    git_status_options = [
+        (False, "branch only — ⎇ main"),
+        (True, "branch + status — ⎇ main +2 *1 ?3"),
+    ]
+
     def _find_idx(options, value):
         for i, (v, _) in enumerate(options):
             if v == value:
@@ -1083,6 +1112,16 @@ def _interactive_install_inner():
             return _BACK
         state["sections"] = result
 
+    def step_git_status():
+        default_idx = 1 if state["git_status"] else 0
+        result = _tui_select(
+            "Git status:", git_status_options, default_idx=default_idx,
+            preview_fn=lambda val: _render_preview_with({"git_status": val}),
+        )
+        if result is _BACK:
+            return _BACK
+        state["git_status"] = result[0]
+
     def step_confirm():
         _write(f'\n{_BOLD}Final preview:{RESET}\n\n')
         _render_preview_with()
@@ -1096,7 +1135,7 @@ def _interactive_install_inner():
         return "done"
 
     steps = [step_theme, step_bar_style, step_bar_width, step_layout,
-             step_sections, step_confirm]
+             step_sections, step_git_status, step_confirm]
 
     # Step header
     _write(f'\n{_BOLD}ccbar {VERSION} — Interactive Setup{RESET}\n\n')
@@ -1117,6 +1156,7 @@ def _interactive_install_inner():
                 "bar": {"style": state["bar_style"], "width": state["bar_width"]},
                 "layout": state["layout"],
                 "sections": state["sections"],
+                "git_status": state["git_status"],
             }
         # Normal step completion (returns None implicitly) — advance
         i += 1
@@ -1197,7 +1237,8 @@ def main():
             if not is_error:
                 line = build_status_line(cached["usage"], cached.get("plan", ""), ctx, cfg)
             else:
-                line = cached.get("error", "Usage unavailable")
+                error = cached.get("error", "Usage unavailable")
+                line = build_status_line(None, cached.get("plan", ""), ctx, cfg, error=error)
             sys.stdout.buffer.write((line + "\n").encode("utf-8"))
             return
 
@@ -1213,11 +1254,11 @@ def main():
     except urllib.error.HTTPError as e:
         usage = None
         error = f"API error: {e.code}"
-        line = error
+        line = build_status_line(usage, plan, ctx, cfg, error=error)
     except Exception:
         usage = None
         error = "Usage unavailable"
-        line = error
+        line = build_status_line(usage, plan, ctx, cfg, error=error)
 
     write_cache(cache_path, usage, plan, error=error)
     sys.stdout.buffer.write((line + "\n").encode("utf-8"))
