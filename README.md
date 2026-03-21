@@ -5,15 +5,15 @@ A configurable status line for [Claude Code](https://docs.anthropic.com/en/docs/
 Shows git branch, directory, model, usage limits, and context window — all in one bar at the bottom of your terminal.
 
 ```
-⎇ main *2 | my-project | Opus | Session ■■□□□□□□ 12% 1h 22m | Weekly ■□□□□□□□ 7% | Ctx ■■■■□□□□ 56% | Max 5x
+⎇ main | 📁 my-project | Opus 4.6 | Session ■■□□□□□□ 12% 1h 22m | Weekly ■□□□□□□□ 7% | Ctx ■■■■□□□□ 56% | Max 5x
 ```
 
 ## Features
 
 - **Session & weekly usage** with progress bars and reset timer
 - **Context window** usage percentage
-- **Git branch** with staged/modified/untracked counts
-- **Current directory** and **model name**
+- **Git branch** name
+- **Current directory** and **model name** (shortened — "Opus 4.6" instead of "Claude Opus 4.6")
 - **Configurable** — bar style, colors, thresholds, section order
 - **Zero dependencies** — Python 3.8+ stdlib only
 - **macOS Keychain support** — works with latest Claude Code auth
@@ -31,6 +31,8 @@ python3 ~/.ccbar/ccbar.py --install
 git clone https://github.com/taras-mrtn/ccbar.git $HOME\.ccbar
 python $HOME\.ccbar\ccbar.py --install
 ```
+
+The `--install` command launches an interactive TUI wizard (arrow-key navigation, live preview) to configure theme, bar style, width, layout, and sections. On non-TTY environments it falls back to text prompts.
 
 Restart Claude Code. That's it.
 
